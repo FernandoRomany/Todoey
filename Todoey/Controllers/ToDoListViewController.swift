@@ -14,14 +14,18 @@ class ToDoListViewController: UITableViewController {
     var itemArray = [Item]()
     
     let context = (UIApplication.shared.delegate as! AppDelegate).persistentContainer.viewContext
-
+    
+    var selectCategory : Category? {
+        didSet{
+            loadItems()
+        }
+    }
     override func viewDidLoad() {
         super.viewDidLoad()
         
-        loadItems()
     }
     
-    //Mark - TableView Data source Methods
+    //MARK: - TableView Data source Methods
     override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         return itemArray.count
     }
@@ -38,20 +42,17 @@ class ToDoListViewController: UITableViewController {
         return cell
     }
     
-    //Mark - TableView Delegate Methods
+    //MARK: - TableView Delegate Methods
     override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
-    //print(itemArray[indexPath.row])
 
-        context.delete(itemArray[indexPath.row])
-        itemArray.remove(at: indexPath.row)
-//        itemArray[indexPath.row].done = !itemArray[indexPath.row].done
+        itemArray[indexPath.row].done = !itemArray[indexPath.row].done
 
         saveItems()
         
         tableView.deselectRow(at: indexPath, animated: true)
     }
     
-    //Mark - Add New Items
+    //MARK: - Add New Items
     
     @IBAction func addButtonPressed(_ sender: UIBarButtonItem) {
         
@@ -64,6 +65,7 @@ class ToDoListViewController: UITableViewController {
             let newItem = Item(context: self.context)
             newItem.title = textField.text!
             newItem.done = false
+            newItem.parentCategory = self.selectCategory
             self.itemArray.append(newItem)
             
             self.saveItems()
@@ -77,10 +79,9 @@ class ToDoListViewController: UITableViewController {
         present(alert, animated: true, completion: nil)
     }
     
-    //Mark - Model Manupulation Methods
+    //MARK: - Model Manupulation Methods
     
     func saveItems() {
-        
         
         do {
             
@@ -91,16 +92,49 @@ class ToDoListViewController: UITableViewController {
         }
         self.tableView.reloadData()
     }
-    
-    func loadItems() {
-        let requset : NSFetchRequest<Item> = Item.fetchRequest()
+    // External value: with - Internal value: request - Default value: Item.fetchRequest()
+    // Default value mean if loadItems() empaty it's will working well
+    func loadItems(with request: NSFetchRequest<Item> = Item.fetchRequest(), predicate : NSPredicate? = nil) {
+        
+        let categoryPredicate = NSPredicate(format: "parentCategory.name MATCHES %@", selectCategory!.name!)
+        
+        if let additionalPredicate = predicate {
+            request.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [categoryPredicate, additionalPredicate])
+        } else {
+            request.predicate = categoryPredicate
+        }
+        
         do {
-            itemArray = try context.fetch(requset)
+            itemArray = try context.fetch(request)
         }
         catch {
             print("Error fetching data from context, \(error)")
         }
+        tableView.reloadData()
+    }
+ 
+}
+//MARK: - Search Bar Methods
+extension ToDoListViewController : UISearchBarDelegate {
+    
+    func searchBarSearchButtonClicked(_ searchBar: UISearchBar) {
+        
+        let request : NSFetchRequest<Item> = Item.fetchRequest()
+        // %@ = values & cd = case and diacritic
+        let predicate = NSPredicate(format: "title CONTAINS[cd] %@", searchBar.text!)
+        
+        request.sortDescriptors = [NSSortDescriptor(key: "title", ascending: true)]
+        
+        loadItems(with: request, predicate: predicate)
     }
     
+    func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {
+        if searchBar.text?.count == 0 {
+            loadItems()
+            
+            DispatchQueue.main.async {
+                searchBar.resignFirstResponder()
+            }
+        }
+    }
 }
-
